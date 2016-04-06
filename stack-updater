@@ -1,0 +1,49 @@
+import boto3
+import sys
+import datetime
+import difflib
+import json
+import pprint
+from subprocess import check_output
+
+client = boto3.client('cloudformation')
+template = check_output(["python", "generate-template"])
+
+stack_name = 'ctwatch'
+change_set_name = stack_name + datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%s")
+
+client.create_change_set(
+    StackName='ctwatch',
+    TemplateBody=template,
+    ChangeSetName=change_set_name
+)
+
+current_template = client.get_template(StackName=stack_name)['TemplateBody']
+
+print '\n'.join(difflib.Differ().compare(
+    json.dumps(current_template, sort_keys=True, indent=4).split('\n'),
+    json.dumps(json.loads(template), sort_keys=True, indent=4).split('\n')
+))
+
+status = "CREATE_PENDING"
+while (status == "CREATE_PENDING" or status == 'CREATE_IN_PROGRESS'):
+    change_set = client.describe_change_set(
+        StackName=stack_name,
+        ChangeSetName=change_set_name
+    )
+    status = change_set[u'Status']
+
+print pprint.PrettyPrinter(indent=2).pprint(change_set)
+
+if status == 'FAILED':
+    sys.stderr.write('create_change_set failed. Exiting.')
+    sys.exit(1)
+
+
+should_execute = raw_input('Do you want to execute this changeset? (y/N) ')
+
+if should_execute == 'y':
+    executed_change_set = client.execute_change_set(
+        StackName=stack_name,
+	ChangeSetName=change_set_name
+    )
