@@ -4,16 +4,15 @@ import datetime
 import difflib
 import json
 import pprint
-from subprocess import check_output
 
 client = boto3.client('cloudformation')
-template = check_output(["python", "generate-template"])
+template = sys.stdin.read()
 
-stack_name = 'ctwatch'
+stack_name = sys.argv[1]
 change_set_name = stack_name + datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%s")
 
 client.create_change_set(
-    StackName='ctwatch',
+    StackName=stack_name,
     TemplateBody=template,
     ChangeSetName=change_set_name
 )
