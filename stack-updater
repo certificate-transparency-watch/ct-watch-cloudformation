@@ -6,43 +6,59 @@ import json
 import pprint
 
 client = boto3.client('cloudformation')
-template = sys.stdin.read()
 
+template = sys.stdin.read()
 stack_name = sys.argv[1]
+
 change_set_name = stack_name + datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%s")
 
-client.create_change_set(
-    StackName=stack_name,
-    TemplateBody=template,
-    ChangeSetName=change_set_name
-)
+def main():
+	print diff()
+	create_change_set()
+	change_set, status = wait_for_change_set_creation()
+	print pprint.PrettyPrinter(indent=2).pprint(change_set)
 
-current_template = client.get_template(StackName=stack_name)['TemplateBody']
+	if status == 'FAILED':
+	    sys.stderr.write('create_change_set failed. Exiting.')
+	    sys.exit(1)
 
-print '\n'.join(difflib.Differ().compare(
-    json.dumps(current_template, sort_keys=True, indent=4).split('\n'),
-    json.dumps(json.loads(template), sort_keys=True, indent=4).split('\n')
-))
+	if user_wants_change_set_to_be_executed():
+	    execute_change_set()
 
-status = "CREATE_PENDING"
-while (status == "CREATE_PENDING" or status == 'CREATE_IN_PROGRESS'):
-    change_set = client.describe_change_set(
-        StackName=stack_name,
-        ChangeSetName=change_set_name
-    )
-    status = change_set[u'Status']
+def diff():
+	current_template = client.get_template(StackName=stack_name)['TemplateBody']
 
-print pprint.PrettyPrinter(indent=2).pprint(change_set)
+	print '\n'.join(difflib.Differ().compare(
+	    json.dumps(current_template, sort_keys=True, indent=4).split('\n'),
+	    json.dumps(json.loads(template), sort_keys=True, indent=4).split('\n')
+	))
 
-if status == 'FAILED':
-    sys.stderr.write('create_change_set failed. Exiting.')
-    sys.exit(1)
+def create_change_set():
+	client.create_change_set(
+	    StackName=stack_name,
+	    TemplateBody=template,
+	    ChangeSetName=change_set_name
+	)
 
+def wait_for_change_set_creation():
+	status = "CREATE_PENDING"
+	while (status == "CREATE_PENDING" or status == 'CREATE_IN_PROGRESS'):
+	    change_set = client.describe_change_set(
+		StackName=stack_name,
+		ChangeSetName=change_set_name
+	    )
+	    status = change_set[u'Status']
+	return change_set, status
 
-should_execute = raw_input('Do you want to execute this changeset? (y/N) ')
+def user_wants_change_set_to_be_executed():
+	resp = raw_input('Do you want to execute this changeset? (y/N) ')
+	return resp == 'y'
 
-if should_execute == 'y':
-    executed_change_set = client.execute_change_set(
-        StackName=stack_name,
-	ChangeSetName=change_set_name
-    )
+def execute_change_set():
+	client.execute_change_set(
+		StackName=stack_name,
+		ChangeSetName=change_set_name
+	)
+
+if __name__ == "__main__":
+	main()
