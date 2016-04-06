@@ -1,0 +1,8 @@
+from troposphere import Ref, Template
+from troposphere.s3 import Bucket
+
+t = Template()
+
+t.add_resource(Bucket("certificates"))
+
+print t.to_json()
